@@ -29,7 +29,7 @@ int main(int argc, char *argv[]){
                 printf("-h (number of hard links)\n");
                 printf("-m (time of last modification)\n");
                 printf("-a (access rights)\n");
-                printf("-l (create a sym link)\n");
+                printf("-l (create a sym link give: link name)\n");
             }
             else if(S_ISDIR(m)){
                 printf("argument %d is dir\n", i);

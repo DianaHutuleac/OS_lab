@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -123,7 +124,45 @@ void processRegularFile(char *path){
         }
 
     }
+
+    pid_t pid;
+
+    if(strstr(path, ".c")){
+        pid = fork();
+
+        if(pid < 0){
+            perror("\nFork failed.\n");
+            return;
+        }
+        else if(pid == 0){
+
+            pid_t getID = getpid();
+            printf("\nPID for .C Files: %d\n", getID);
+
+            execlp("./compileScript.sh", "./compileScript.sh", path, NULL);
+            perror("\nExec failed.\n");
+            return;
+        }
+        else{
+            int status;
+            
+            int w = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+
+            if(w == -1){
+                perror("\nWaitpid\n");
+                exit(EXIT_FAILURE);
+            }
+            if(WIFEXITED(status)){
+                printf("\nExited, status = %d, PID: %d \n ", WEXITSTATUS(status), w);
+            }
+            else{
+                perror("\nError at exiting.\n");
+                exit(-1);
+            }
+        }
+    }
 }
+
 
 void processDirectory(char* path){
 
@@ -183,6 +222,7 @@ void processDirectory(char* path){
             printf("\nThe directory name is: %s", entry->d_name);
 
         }
+        printf("\n");
                         
     }
 
@@ -235,6 +275,50 @@ void processDirectory(char* path){
 
     }
 
+    pid_t pid = fork();
+
+    if(pid < 0){
+        perror("\nFork failed.\n");
+        return;
+    }
+    else if(pid == 0){
+
+        pid_t getID = getpid();
+        printf("\nPID for Directories: %d\n", getID);
+
+        char fileName[100];
+        snprintf(fileName, sizeof(fileName), "%s/%s", path, "file.txt");
+
+        FILE *f = fopen(fileName, "w");
+
+        if(f == NULL){
+            perror("\nError creating file.\n");
+            return;
+        }
+        fclose(f);
+
+        printf("\n-------------------------------------------------------------------\n");
+        printf("\nThe provided argument is a directory. In addition, a corresponding txt file will be created:\n");
+        printf("\nFile created: %s\n", fileName);
+        printf("\n-------------------------------------------------------------------\n");
+        exit(EXIT_SUCCESS);
+    }
+    else{
+        int status;
+        int w = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+
+        if(w == -1){
+            perror("\nWaitpid\n");
+            exit(EXIT_FAILURE);
+        }
+        if(WIFEXITED(status)){
+            printf("\nExited, status = %d, PID: %d \n ", WEXITSTATUS(status), w);
+        }
+        else{
+            perror("\nError at exiting.\n");
+            exit(-1);
+        }
+    }
 }
              
 
@@ -317,12 +401,12 @@ void processLinks(char* path){
                 }
             } else {
                 perror("lstat");
-                exit(1);
+                return;
             }
         }
         else {
             perror("readlink");
-            exit(1);
+            return;
         }
     }
 
@@ -340,75 +424,106 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
     else{
-        for(int i = 1; i < argc; i++){
+        int i, status;
 
-            struct stat info;
-            lstat(argv[i], &info);
-
-            mode_t m;
-            m = info.st_mode;
-
-
-            if(S_ISREG(m)){
-
-                printf("\nArgument %d is a Regular File\n", i);
-
-                printf("\nMenu for a regular file:\n\n");
-
-                char *row1[] = {"Option", "Description"};
-                char *col1[] = {"-n", "-d", "-h", "-m", "-a", "-l"};
-                char *col2[] = {"File Name", "File Dimension/Size", "Number of Hard Links", "Time of Last Modification", "Access Rights", "Create a Symbolic Link & Give the Link Name"};
-
-                printf("%10s\t|\t%10s\t \n", row1[0], row1[1]);
-                printf("-------------------------------------------------------------------\n");
-                size_t len = sizeof col1 / sizeof col1[0];
-                for (int j = 0; j < len; ++j) {
-                    printf("%8s\t|\t%9s\t\n", col1[j], col2[j]);
-                }
-
-                processRegularFile(argv[i]);
-                
-            } 
-            if(S_ISDIR(m)){
-
-                printf("\nArgument %d is a Directory\n", i);
-
-                printf("\nMenu for a Directory:\n\n");
-
-                char *row1[] = {"Option", "Description"};
-                char *col1[] = {"-n", "-d", "-a", "-c"};
-                char *col2[] = {"Directory Name", "Directory Dimension/Size", "Access Rights", "Total number of .c files in the directory"};
-
-                printf("%10s\t|\t%10s\t \n", row1[0], row1[1]);
-                printf("-------------------------------------------------------------------\n");
-                size_t len = sizeof col1 / sizeof col1[0];
-                for (int k = 0; k < len; ++k) {
-                    printf("%8s\t|\t%9s\t\n", col1[k], col2[k]);
-                }
-
-                processDirectory(argv[i]);
-
+        for(i = 1; i < argc; i++){
+            // Create a child process
+            pid_t pid = fork();
+ 
+            if(pid < 0){
+                perror("Error\n");
+                exit(EXIT_FAILURE);
             }
-            if(S_ISLNK(m)){
 
-                printf("\nArgument %d is a link\n", i);
+            else if(pid == 0){
 
-                printf("\nMenu for a symbolic link:\n\n");
-                
-                char *row1[] = {"Option", "Description"};
-                char *col1[] = {"-n", "-l", "-d", "-t", "-a"};
-                char *col2[] = {"Link Name", "Delete link", "Size of the link", "Size of the target", "Access Rights"};
+                pid_t getID = getpid();
+                printf("\nPID for Handling Menu: %d\n", getID);
+                                    
+                struct stat info;
+                lstat(argv[i], &info);
+                mode_t m;
+                m = info.st_mode;
 
-                printf("%10s\t|\t%10s\t \n", row1[0], row1[1]);
-                printf("-------------------------------------------------------------------\n");
-                size_t len = sizeof col1 / sizeof col1[0];
-                for (int l = 0; l < len; ++l) {
-                    printf("%8s\t|\t%9s\t\n", col1[l], col2[l]);
+                if(S_ISREG(m)){
+
+                    printf("\nArgument %d is a Regular File\n", i);
+
+                    printf("\nMenu for a regular file:\n\n");
+
+                    char *row1[] = {"Option", "Description"};
+                    char *col1[] = {"-n", "-d", "-h", "-m", "-a", "-l"};
+                    char *col2[] = {"File Name", "File Dimension/Size", "Number of Hard Links", "Time of Last Modification", "Access Rights", "Create a Symbolic Link & Give the Link Name"};
+
+                    printf("%10s\t|\t%10s\t \n", row1[0], row1[1]);
+                    printf("-------------------------------------------------------------------\n");
+                    size_t len = sizeof col1 / sizeof col1[0];
+                    for (int j = 0; j < len; ++j) {
+                        printf("%8s\t|\t%9s\t\n", col1[j], col2[j]);
+                    }
+
+                    processRegularFile(argv[i]);
+                        
+                } 
+                if(S_ISDIR(m)){
+
+                    printf("\nArgument %d is a Directory\n", i);
+
+                    printf("\nMenu for a Directory:\n\n");
+
+                    char *row1[] = {"Option", "Description"};
+                    char *col1[] = {"-n", "-d", "-a", "-c"};
+                    char *col2[] = {"Directory Name", "Directory Dimension/Size", "Access Rights", "Total number of .c files in the directory"};
+
+                    printf("%10s\t|\t%10s\t \n", row1[0], row1[1]);
+                    printf("-------------------------------------------------------------------\n");
+                    size_t len = sizeof col1 / sizeof col1[0];
+                    for (int k = 0; k < len; ++k) {
+                        printf("%8s\t|\t%9s\t\n", col1[k], col2[k]);
+                    }
+
+                    processDirectory(argv[i]);
+
+                }
+                if(S_ISLNK(m)){
+
+                    printf("\nArgument %d is a link\n", i);
+
+                    printf("\nMenu for a symbolic link:\n\n");
+                        
+                    char *row1[] = {"Option", "Description"};
+                    char *col1[] = {"-n", "-l", "-d", "-t", "-a"};
+                    char *col2[] = {"Link Name", "Delete link", "Size of the link", "Size of the target", "Access Rights"};
+
+                    printf("%10s\t|\t%10s\t \n", row1[0], row1[1]);
+                    printf("-------------------------------------------------------------------\n");
+                    size_t len = sizeof col1 / sizeof col1[0];
+                    for (int l = 0; l < len; ++l) {
+                        printf("%8s\t|\t%9s\t\n", col1[l], col2[l]);
+                    }
+
+                    processLinks(argv[i]);
+
                 }
 
-                processLinks(argv[i]);
-
+                exit(EXIT_SUCCESS);
             }
-        }
+            else{
+
+                int w = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+
+                if(w == -1){
+                    perror("\nWaitpid\n");
+                    exit(EXIT_FAILURE);
+                }
+                if(WIFEXITED(status)){
+                    printf("\nExited, status = %d, PID: %d \n ", WEXITSTATUS(status), w);
+                }
+                else{
+                    perror("\nError at exiting.\n");
+                    exit(-1);
+                }
+            }     
+        } 
     }
 }

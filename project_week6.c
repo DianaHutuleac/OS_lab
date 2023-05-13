@@ -424,8 +424,8 @@ int main(int argc, char *argv[]){
             // Parent process here
             char *ext = strrchr(argv[i], '.');
             int pfd[2];
-
-            if (pipe(pfd) < 0) {
+            // Create pipe only if we have regular file
+            if (S_ISREG(info.st_mode) && pipe(pfd) < 0) {
                 perror("\nPipe creation error\n");
                 exit(EXIT_FAILURE);
             }
@@ -435,9 +435,9 @@ int main(int argc, char *argv[]){
                 exit(EXIT_FAILURE);
             } else if (pid == 0) {
                 // Create second child process
-
+                
                 if(S_ISREG(info.st_mode)){
-                    // Close read end of the pipe
+                    // Close read end of the pipe => the child process wants to write into the pipe
                     close(pfd[0]);
                     if (ext != NULL && strcmp(ext, ".c") == 0) {
                         // Redirect stdout to the write end of the pipe
@@ -448,6 +448,7 @@ int main(int argc, char *argv[]){
                             perror(strerror(errno));
                             exit(errno);
                         }
+                        close(pfd[1]);
                     } else{
                         int noOfLines = 0;
                         char c;
@@ -463,7 +464,11 @@ int main(int argc, char *argv[]){
                             }
                         }
 
-                        printf("\nNumber of lines in the file: %d\n", noOfLines);
+                        //printf("\nNumber of lines in the file: %d\n", noOfLines);
+                        char linesString[10];
+                        sprintf(linesString, "%d", noOfLines);
+                        write(pfd[1], linesString, strlen(linesString));
+                        close(pfd[1]);
                         fclose(fp);                        
                     }
                     exit(EXIT_SUCCESS);
@@ -478,8 +483,7 @@ int main(int argc, char *argv[]){
                     }
 
                     exit(EXIT_SUCCESS);
-                }
-                if(S_ISLNK(info.st_mode)){
+                } else if(S_ISLNK(info.st_mode)){
 
                     if(execlp("chmod", "chmod", "u=rwx,g=rw,o=", argv[i], NULL) == -1){
                         perror(strerror(errno));
@@ -488,11 +492,12 @@ int main(int argc, char *argv[]){
                     exit(EXIT_SUCCESS);  
                 }
             }
+            
             // Computing the score in the parent process
             if(S_ISREG(info.st_mode)){
+                // The parent process closes the write end of the pipe => the parent process wants to read from the pipe
+                close(pfd[1]);
                 if (ext != NULL && strcmp(ext, ".c") == 0) {
-                    close(pfd[1]);
-
                     char string[255];
                     int noOfErrors = 0, noOfWarnings = 0;
                     FILE *stream;
@@ -506,6 +511,7 @@ int main(int argc, char *argv[]){
                             noOfWarnings++;
                         }
                     }
+                    close(pfd[0]);
 
                     printf("\nNumber of Errors: %d\nNumber of Warnings: %d\n", noOfErrors, noOfWarnings);
                     double score;
@@ -536,7 +542,12 @@ int main(int argc, char *argv[]){
                     fclose(fp);
 
                     printf("\nScore computed and saved in grades.txt.\n");
+                } else{
+                    char string[255];
+                    read(pfd[0], string, strlen(string));
                     close(pfd[0]);
+
+                    printf("\nNumber of lines in the file: %s\n", string);
                 }
             }
 
